@@ -276,11 +276,11 @@ const ADMIN_PASSWORD = 'afriscope2026'; // mot de passe de secours UNIQUEMENT si
    3. Collez-les ci-dessous entre les guillemets, puis republiez ce fichier sur GitHub.
    Tant que ces deux valeurs ne sont pas renseignées, le site continue de fonctionner
    en mode démo local (comme avant), sans base partagée. */
-const SUPABASE_URL = 'https://xzgxabefcyxenxlymfur.supabase.co/rest/v1/';       // ex: 'https://xxxxxxxxxxxx.supabase.co'
+const SUPABASE_URL = 'https://xzgxabefcyxenxlymfur.supabase.co';             // URL racine du projet Supabase (sans /rest/v1/)
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6Z3hhYmVmY3l4ZW54bHltZnVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3MjI0OTksImV4cCI6MjEwNjI5ODQ5OX0.l388wTGzvoyxFM2Mn9PwM_gzyauabCikOEU_TEri65o';  // ex: 'eyJhbGciOi...' (clé "anon public", jamais la clé "service_role")
 
-const SUPABASE_CONFIGURED = !!(SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http'));
-const supa = (SUPABASE_CONFIGURED && window.supabase) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const SUPABASE_CONFIGURED = !!(SUPABASE_URL && SUPABASE_ANON_KEY && /^https?:\/\//.test(SUPABASE_URL));
+const supa = (SUPABASE_CONFIGURED && window.supabase) ? window.supabase.createClient(SUPABASE_URL.replace(/\/+$|\/rest\/v1\/?$/g,'').replace(/\/rest\/v1$/,''), SUPABASE_ANON_KEY) : null;
 const FACEBOOK_URL = 'https://facebook.com/media.afriscope';
 const WHATSAPP_URL = 'https://whatsapp.com/channel/0029Va4pFXb1XquPUoaRxP2q';
 const CONTACT_EMAIL = 'media.afriscope@gmail.com';
@@ -490,7 +490,16 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   const fav = document.getElementById('faviconLink');
   if(fav) fav.href = LOGO;
   if(supa){
-    try{ const { data:{session} } = await supa.auth.getSession(); adminLogged = !!session; }catch(e){}
+    try{
+      // Supabase v2 récupère automatiquement la session après un lien e-mail/OAuth.
+      const { data:{session}, error } = await supa.auth.getSession();
+      if(error) console.warn('Supabase session:', error);
+      adminLogged = !!session;
+      supa.auth.onAuthStateChange((_event, session) => {
+        adminLogged = !!session;
+        if(location.hash.startsWith('#/admin')) render();
+      });
+    }catch(e){ console.warn('Supabase Auth indisponible:', e); }
   }
   await loadDB();
   render();
