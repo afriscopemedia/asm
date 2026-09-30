@@ -75,5 +75,7 @@ const urls = [PUBLIC_SITE_URL + "/"];
 for (const a of articles) urls.push(`${PUBLIC_SITE_URL}/article/${encodeURIComponent(a.slug)}/`);
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `<url><loc>${esc(u)}</loc></url>`).join("\n")}\n</urlset>\n`;
 await fs.writeFile(path.join(DIST, "sitemap.xml"), sitemap);
-await fs.copyFile(path.join(ROOT, "404.html"), path.join(DIST, "404.html"));
+let notFound = await fs.readFile(path.join(ROOT, "404.html"), "utf8");
+notFound = notFound.replace(/<script src="\.\/config\.js"><\/script>/, `<script src="${esc(PUBLIC_SITE_URL)}/config.js"></script>`);
+await fs.writeFile(path.join(DIST, "404.html"), notFound);
 console.log(`Build SEO terminée: ${articles.length} article(s), sitemap généré.`);
