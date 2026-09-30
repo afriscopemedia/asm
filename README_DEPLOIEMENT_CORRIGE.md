@@ -62,16 +62,3 @@ L’Edge Function fournit alors les balises OG aux plateformes qui suivent cette
 ## Important
 
 La génération statique est volontaire : les fragments `#/article/...` ne sont pas suffisamment exploitables par les crawlers. Les URLs publiques d’articles utilisent désormais `/article/slug/`.
-
-
-## Correction GitHub Pages — site projet `/asm`
-
-Le site est publié comme **GitHub Pages Project Site** à l’URL `https://afriscopemedia.github.io/asm/`.
-Le code ne doit donc jamais fabriquer un lien public avec `/article/...` à la racine du domaine.
-
-Le patch final utilise `PUBLIC_SITE_URL` pour construire les URLs publiques et calcule automatiquement le chemin de base (`/asm`). Les pages SEO générées sous `article/<slug>/index.html` détectent aussi leur route à partir de `location.pathname`, et non uniquement de `location.hash`.
-
-Ainsi un article est accessible directement sous :
-`https://afriscopemedia.github.io/asm/article/<slug>/`
-
-Cela est nécessaire pour que les pages statiques générées par GitHub Pages restent accessibles. GitHub recommande par ailleurs un `index.html` à la racine de la source de publication et permet une page `404.html` personnalisée. citeturn0search5turn0search1

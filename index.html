@@ -321,16 +321,11 @@ const SUPABASE_PROJECT_REF = window.AFRISCOPE_CONFIG?.supabaseProjectRef || '';
 const AI_FUNCTION_URL = SUPABASE_URL ? SUPABASE_URL.replace(/\/$/,'') + '/functions/v1/ai-editor' : '';
 const ANALYTICS_FUNCTION_URL = SUPABASE_URL ? SUPABASE_URL.replace(/\/$/,'') + '/functions/v1/track-visit' : '';
 const OG_FUNCTION_URL = SUPABASE_URL ? SUPABASE_URL.replace(/\/$/,'') + '/functions/v1/og' : '';
-const PUBLIC_SITE_URL = (window.AFRISCOPE_CONFIG?.publicSiteUrl || window.location.origin).replace(/\/$/,'');
-const SITE_BASE_PATH = (()=>{ try { return new URL(PUBLIC_SITE_URL).pathname.replace(/\/$/,''); } catch(e){ return ''; } })();
-function siteUrl(path=''){
-  const clean = String(path || '').replace(/^\/+/, '');
-  return PUBLIC_SITE_URL + (clean ? '/' + clean : '/');
-}
-function sitePath(path=''){
-  const clean = String(path || '').replace(/^\/+/, '');
-  return SITE_BASE_PATH + (clean ? '/' + clean : '/');
-}
+const PUBLIC_SITE_URL = (window.AFRISCOPE_CONFIG?.publicSiteUrl || 'https://afriscopemedia.github.io/asm').replace(/\/$/,'');
+const SITE_BASE_PATH = (() => { try { return new URL(PUBLIC_SITE_URL).pathname.replace(/\/+$/,''); } catch { return '/asm'; } })();
+function siteUrl(path=''){ const clean = String(path||'').replace(/^\/+/, ''); return `${PUBLIC_SITE_URL}${clean ? '/'+clean : ''}`; }
+function sitePath(path=''){ const clean = String(path||'').replace(/^\/+/, ''); return `${SITE_BASE_PATH}${clean ? '/'+clean : '/'}`; }
+
 const SUPABASE_CONFIGURED = !!(SUPABASE_URL && SUPABASE_ANON_KEY && /^https?:\/\//.test(SUPABASE_URL));
 const supa = (SUPABASE_CONFIGURED && window.supabase) ? window.supabase.createClient(SUPABASE_URL.replace(/\/$/,''), SUPABASE_ANON_KEY) : null;
 
@@ -462,14 +457,12 @@ window.addEventListener('DOMContentLoaded', async ()=>{
 });
 
 function route(){
-  const h = location.hash.replace(/^#\/?/,'') || '';
+  const h = location.hash.replace(/^#\/?/,'').trim();
   if(h) return h.split('/').filter(Boolean);
-  const pathname = decodeURIComponent(location.pathname || '/');
-  const base = SITE_BASE_PATH || 'https://github.com/afriscopemedia/asm/';
-  let relative = pathname;
-  if(base && (pathname===base || pathname.startsWith(base+'/'))) relative = pathname.slice(base.length);
-  relative = relative.replace(/^\/+|\/+$/g,'');
-  return relative ? relative.split('/').filter(Boolean) : [];
+  let path = decodeURIComponent(location.pathname || '/');
+  if(SITE_BASE_PATH && (path === SITE_BASE_PATH || path.startsWith(SITE_BASE_PATH + '/'))) path = path.slice(SITE_BASE_PATH.length);
+  path = path.replace(/^\/+|\/+$/g,'');
+  return path ? path.split('/').filter(Boolean) : [];
 }
 
 async function render(){
@@ -514,8 +507,8 @@ function chrome(bodyHtml, activeRoute){
   ];
   const navHtml = navItems.map(n=>`<a href="${n.href}" class="${n.href===activeRoute?'active':''}">${n.label}</a>`).join('');
   const featured = publicArticles().filter(a=>a.category==='a-la-une').sort((a,b)=>new Date(b.publishAt)-new Date(a.publishAt)).slice(0,5);
-  const ticker = featured.length ? `<div class="news-ticker"><div class="news-ticker-inner"><span class="news-ticker-label">À la Une</span><div class="news-ticker-window"><div class="news-ticker-track">${featured.map(a=>`<a href="${siteUrl('article/'+encodeURIComponent(a.slug))}">${escapeHtml(a.title)}</a>`).join('')}</div></div></div></div>` : '';
-  const progress = activeRoute && (activeRoute.indexOf('#/article/')===0 || activeRoute.indexOf('article/')===0) ? '<div class="progress-bar" id="progressBar" aria-hidden="true"></div>' : '';
+  const ticker = featured.length ? `<div class="news-ticker"><div class="news-ticker-inner"><span class="news-ticker-label">À la Une</span><div class="news-ticker-window"><div class="news-ticker-track">${featured.map(a=>`<a href="${sitePath('article/'+encodeURIComponent(a.slug)+'/')}">${escapeHtml(a.title)}</a>`).join('')}</div></div></div></div>` : '';
+  const progress = activeRoute && activeRoute.indexOf(SITE_BASE_PATH+'/article/')===0 ? '<div class="progress-bar" id="progressBar" aria-hidden="true"></div>' : '';
   return `
   ${progress}
   ${ticker}
@@ -587,7 +580,7 @@ function footerSecretClick(){
 function articleCard(a, big){
   const img = a.image || 'https://placehold.co/600x400';
   return `
-  <a href="${siteUrl('article/'+encodeURIComponent(a.slug))}" class="card">
+  <a href="${sitePath('article/'+encodeURIComponent(a.slug)+'/')}" class="card">
     <img src="${img}" alt="${escapeHtml(a.title)}">
     <div class="card-body">
       <span class="pill" style="background:${catColor(a.category)};color:#fff">${catName(a.category)}</span>
@@ -607,7 +600,7 @@ function renderHome(){
   const sideList = all.slice(1,5);
   let body = `<div class="wrap">
     <div class="hero">
-      <a href="${siteUrl('article/'+encodeURIComponent(featured.slug))}" class="hero-main">
+      <a href="${sitePath('article/'+encodeURIComponent(featured.slug)+'/')}" class="hero-main">
         <img src="${featured.image}" alt="${escapeHtml(featured.title)}">
         <div class="overlay">
           <span class="pill on-dark" style="background:${catColor(featured.category)}">${catName(featured.category)}</span>
@@ -618,7 +611,7 @@ function renderHome(){
       </a>
       <div class="hero-side">
         ${sideList.map(a=>`
-          <a href="${siteUrl('article/'+encodeURIComponent(a.slug))}" class="side-card">
+          <a href="${sitePath('article/'+encodeURIComponent(a.slug)+'/')}" class="side-card">
             <img src="${a.image}" alt="${escapeHtml(a.title)}">
             <div>
               <span class="pill" style="background:${catColor(a.category)};color:#fff;font-size:10.5px;padding:2px 8px;">${catName(a.category)}</span>
@@ -650,12 +643,12 @@ function renderRubrique(slug){
     <div class="section-title"><h2>${cat?cat.name:'Rubrique'}</h2></div>
     ${list.length? `<div class="grid3">${list.map(a=>articleCard(a)).join('')}</div>` : '<p class="empty">Aucun article dans cette rubrique pour le moment.</p>'}
   </div>`;
-  setPageMeta({title:`${cat?cat.name:'Rubrique'} — AfriScope Media`,url:PUBLIC_SITE_URL+'/rubrique/'+encodeURIComponent(slug)});
+  setPageMeta({title:`${cat?cat.name:'Rubrique'} — AfriScope Media`,url:siteUrl('/rubrique/')+encodeURIComponent(slug)});
   document.getElementById('app').innerHTML = chrome(body, '#/rubrique/'+slug);
 }
 
 function renderSearch(q){
-  setPageMeta({title:'Recherche — AfriScope Media',description:`Résultats de recherche sur AfriScope Media pour ${decodeURIComponent(q)}`,url:PUBLIC_SITE_URL+'/recherche/'+encodeURIComponent(decodeURIComponent(q))});
+  setPageMeta({title:'Recherche — AfriScope Media',description:`Résultats de recherche sur AfriScope Media pour ${decodeURIComponent(q)}`,url:siteUrl('/recherche/')+encodeURIComponent(decodeURIComponent(q))});
   const query = decodeURIComponent(q).toLowerCase();
   const list = publicArticles().filter(a=> a.title.toLowerCase().includes(query) || a.excerpt.toLowerCase().includes(query));
   const body = `<div class="wrap" style="margin-top:26px">
@@ -682,7 +675,7 @@ function setPageMeta({title,description,url,type='website',image=''}={}){
 }
 function setArticleMeta(a){
   const desc=(a.excerpt||a.content||'').replace(/\s+/g,' ').trim().slice(0,160);
-  const publicArticleUrl=siteUrl('article/'+encodeURIComponent(a.slug));
+  const publicArticleUrl=siteUrl('/article/'+encodeURIComponent(a.slug)+'/');
   document.title=a.title+' | AfriScope Media';
   let metaDesc=document.querySelector('meta[name="description"]'); if(metaDesc) metaDesc.setAttribute('content',desc);
   setMetaTag('og:title',a.title+' | AfriScope Media');
@@ -764,7 +757,7 @@ async function renderArticlePage(slug){
     ${adBlock('after-article')}
     ${related.length?`<div class="wrap rubrique-block"><div class="section-title"><h2>À lire aussi</h2></div><div class="grid3">${related.map(r=>articleCard(r)).join('')}</div></div>`:''}
   `;
-  document.getElementById('app').innerHTML = chrome(body,'article/'+slug);
+  document.getElementById('app').innerHTML = chrome(body,sitePath('/article/'+encodeURIComponent(slug)+'/'));
   setupProgressBar();
 }
 
@@ -830,7 +823,7 @@ function renderContact(){
       <a class="cta" href="mailto:${CONTACT_EMAIL}">Contacter la rédaction →</a>
     </div>
   </div>`;
-  setPageMeta({title:'Contact — AfriScope Media',description:'Contacter la rédaction et la régie publicitaire d’AfriScope Media.',url:PUBLIC_SITE_URL+'/contact'});
+  setPageMeta({title:'Contact — AfriScope Media',description:'Contacter la rédaction et la régie publicitaire d’AfriScope Media.',url:siteUrl('/contact')});
   document.getElementById('app').innerHTML = chrome(body,'#/contact');
 }
 async function submitContact(ev){
