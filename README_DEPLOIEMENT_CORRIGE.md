@@ -1,64 +1,93 @@
-# AfriScope Media — déploiement corrigé
+# AfriScope Media — refonte CMS v2
+
+Cette version conserve les identifiants publics Supabase existants et ne place aucune clé OpenAI/service-role dans le navigateur.
 
 ## Architecture
 
-- `index.html` : application publique + administration.
-- `config.js` : configuration **publique uniquement** (URL Supabase + clé publishable).
-- `supabase/functions/ai-editor` : authentification Supabase + appel OpenAI côté serveur.
-- `supabase/functions/og` : métadonnées Open Graph pour le partage social.
-- `scripts/build-site.mjs` : pré-rendu des pages d’articles pour que les crawlers voient immédiatement le titre, le chapô, l’image et le JSON-LD.
-- `.github/workflows/pages.yml` : build/déploiement GitHub Pages à chaque push et toutes les heures.
+- `index.html` : front public + espace administrateur.
+- `config.js` : uniquement URL Supabase, project ref et clé publique existante.
+- `supabase/cms-v2.sql` : crée le stockage éditorial normalisé `cms_site_state` + `cms_articles`, RLS, stockage images et analytics, puis importe **sans supprimer** la donnée legacy `site_data`.
+- `supabase/functions/ai-editor` : génération IA authentifiée côté serveur avec OpenAI Responses API.
+- `supabase/functions/og` : endpoint public de partage social basé sur `cms_articles`.
+- `supabase/functions/track-visit` : collecte analytics côté serveur sans exposer de clé secrète.
+- `scripts/build-site.mjs` : pré-rendu des pages `/article/<slug>/`, sitemap et configuration publique.
+- `.github/workflows/pages.yml` : build + déploiement GitHub Pages.
 
-## Secrets GitHub Actions
+## Pourquoi cette refonte
 
-Dans GitHub → Settings → Secrets and variables → Actions :
+L'ancien fonctionnement sauvegardait les articles dans un objet JSON unique (`site_data`). Une erreur de cardinalité, un doublon ou un échec d'upsert pouvait donc laisser l'administration avec une donnée locale alors que les visiteurs lisaient une autre version.
 
-- `SUPABASE_URL`
-- `SUPABASE_PUBLISHABLE_KEY`
+Le CMS v2 donne aux articles leur propre table avec clé primaire, slug unique, statuts, dates de publication, corbeille et RLS. Après chaque enregistrement, l'éditeur reçoit la ligne réellement écrite par Supabase : aucun « faux succès » local n'est affiché.
 
-Dans Variables :
+## 1. Migration Supabase — à faire une seule fois
 
-- `PUBLIC_SITE_URL` (ex. `https://afriscopemedia.github.io/asm` ou votre domaine)
+Dans **Supabase → SQL Editor**, exécutez :
 
-Ne mettez jamais `OPENAI_API_KEY`, `sb_secret_...`, `service_role` ou Resend dans GitHub Pages ou `config.js`.
+`supabase/cms-v2.sql`
 
-## Secrets Supabase Edge Functions
+Le script :
 
-Configurer dans Supabase :
+1. crée les tables v2 ;
+2. active les politiques RLS ;
+3. importe la dernière version lisible de `site_data` ;
+4. ne supprime aucune ligne de `site_data` ;
+5. crée/réutilise le bucket `article-images` ;
+6. prépare les analytics.
+
+Si la migration a déjà été exécutée, elle est conçue pour être rejouable ; elle ne doit pas être combinée avec les anciens scripts de réparation de `site_data`.
+
+## 2. Secrets Supabase
+
+Conservez les secrets déjà présents. Vérifiez simplement :
 
 - `OPENAI_API_KEY`
-- `OPENAI_MODEL` (par exemple `gpt-5.6-luna`)
-- `PUBLIC_SITE_URL`
-- éventuellement les secrets déjà utilisés par `daily-newsletter`
+- `OPENAI_MODEL` = `gpt-5.6-luna` (ou votre modèle OpenAI déjà configuré)
+- `PUBLIC_SITE_URL` = `https://afriscopemedia.github.io/asm`
 
-Puis :
+La clé OpenAI reste uniquement dans les secrets des Edge Functions.
+
+## 3. Déployer les Edge Functions
 
 ```bash
 supabase link --project-ref xzgxabefcyxenxlymfur
 supabase functions deploy ai-editor
 supabase functions deploy og
 supabase functions deploy track-visit
-supabase functions deploy daily-newsletter
 ```
 
-## GitHub Pages
+Ne mettez jamais `OPENAI_API_KEY`, `service_role` ou une Secret Key Supabase dans `config.js` ou GitHub Pages.
 
-Activez Settings → Pages → Source : **GitHub Actions**.
+## 4. GitHub Actions
 
-Le workflow reconstruit les pages statiques depuis `site_data`, génère `sitemap.xml`, puis déploie `dist/`.
+Dans **Settings → Secrets and variables → Actions** :
 
-## Open Graph
+### Secrets
 
-Pour un partage social, l’URL canonique est maintenant :
+- `SUPABASE_URL`
+- `SUPABASE_PUBLISHABLE_KEY` (ou le secret public existant déjà utilisé par le dépôt)
 
-`/article/SLUG/`
+### Variable
 
-Le bouton de partage peut continuer à utiliser :
+- `PUBLIC_SITE_URL` = `https://afriscopemedia.github.io/asm`
 
-`/functions/v1/og?slug=SLUG`
+Puis laissez GitHub Pages utiliser **GitHub Actions** comme source de publication.
 
-L’Edge Function fournit alors les balises OG aux plateformes qui suivent cette URL.
+## 5. Vérification fonctionnelle
 
-## Important
+Après migration et déploiement :
 
-La génération statique est volontaire : les fragments `#/article/...` ne sont pas suffisamment exploitables par les crawlers. Les URLs publiques d’articles utilisent désormais `/article/slug/`.
+1. ouvrir `/asm/` ;
+2. ouvrir `/asm/admin` ;
+3. se connecter avec le compte Supabase Auth existant ;
+4. créer un brouillon ;
+5. générer un article avec IA ;
+6. enregistrer ;
+7. publier ;
+8. ouvrir l'URL `/asm/article/<slug>/` dans une fenêtre privée ;
+9. vérifier le titre, le texte et l'image ;
+10. vérifier le partage via `functions/v1/og?slug=<slug>` ;
+11. vérifier que le workflow GitHub Pages génère la page statique et le sitemap.
+
+## Données sensibles
+
+Les clés publiques Supabase sont destinées au navigateur et sont protégées par RLS. Les secrets Supabase/OpenAI restent côté Edge Functions, conformément au modèle de sécurité Supabase.

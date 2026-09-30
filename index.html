@@ -359,11 +359,34 @@ function toast(msg){
 }
 function slugify(s){ return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
 
-/* ---------- persistance Supabase uniquement ---------- */
-function publicDBPayload(){
+/* ---------- persistance Supabase — CMS v2 ---------- */
+function publicSiteState(){
   return {
-    categories: DB.categories || [], authors: DB.authors || [], tags: DB.tags || [],
-    articles: DB.articles || [], ads: DB.ads || []
+    id:'main',
+    categories: DB.categories || [],
+    authors: DB.authors || [],
+    tags: DB.tags || [],
+    ads: DB.ads || [],
+    updated_at: nowIso()
+  };
+}
+function mapArticleRow(r){
+  return {
+    id:r.id, slug:r.slug, title:r.title, excerpt:r.excerpt||'', content:r.content||'', image:r.image||'',
+    seoTitle:r.seo_title||'', seoDescription:r.seo_description||'', ogDescription:r.og_description||'',
+    category:r.category||'', author:r.author||'', tags:Array.isArray(r.tags)?r.tags:[], premium:!!r.premium,
+    status:r.status||'draft', publishAt:r.publish_at||null, createdAt:r.created_at||nowIso(),
+    updatedAt:r.updated_at||r.created_at||nowIso(), deletedAt:r.deleted_at||null, readMinutes:Math.max(1,Number(r.read_minutes)||1)
+  };
+}
+function articleRow(a){
+  return {
+    id:a.id, slug:a.slug, title:a.title, excerpt:a.excerpt||'', content:a.content||'', image:a.image||'',
+    seo_title:a.seoTitle||a.title||'', seo_description:a.seoDescription||a.excerpt||'',
+    og_description:a.ogDescription||a.seoDescription||a.excerpt||'', category:a.category||'', author:a.author||'',
+    tags:Array.isArray(a.tags)?a.tags:[], premium:!!a.premium, status:a.status||'draft',
+    publish_at:a.publishAt||null, created_at:a.createdAt||nowIso(), updated_at:nowIso(), deleted_at:a.deletedAt||null,
+    read_minutes:Math.max(1,Number(a.readMinutes)||readTime(a.content||''))
   };
 }
 async function loadPrivateData(){
@@ -382,19 +405,48 @@ async function loadPrivateData(){
 }
 async function loadDB(){
   if(!supa) throw new Error('Supabase n’est pas configuré. Vérifiez config.js.');
-  const {data,error}=await supa.from('site_data').select('data').eq('id','main').maybeSingle();
-  if(error) throw error;
-  if(!data?.data) throw new Error('La ligne site_data/main est absente. Exécutez setup.sql puis initialisez le contenu.');
-  DB=data.data;
-  DB.categories=DB.categories||[]; DB.authors=DB.authors||[]; DB.tags=DB.tags||[]; DB.articles=DB.articles||[]; DB.ads=DB.ads||[];
-  DB.subscribers=[]; DB.contactMessages=[]; DB.analytics=[];
+  const [stateRes, articlesRes] = await Promise.all([
+    supa.from('cms_site_state').select('id,categories,authors,tags,ads,updated_at').eq('id','main').limit(1),
+    supa.from('cms_articles').select('*').order('updated_at',{ascending:false})
+  ]);
+  if(stateRes.error) throw stateRes.error;
+  if(articlesRes.error) throw articlesRes.error;
+  const state=Array.isArray(stateRes.data)?stateRes.data[0]:null;
+  if(!state) throw new Error('CMS non initialisé. Exécutez supabase/cms-v2.sql une seule fois dans Supabase.');
+  DB={
+    categories:Array.isArray(state.categories)?state.categories:[],
+    authors:Array.isArray(state.authors)?state.authors:[],
+    tags:Array.isArray(state.tags)?state.tags:[],
+    ads:Array.isArray(state.ads)?state.ads:[],
+    articles:(articlesRes.data||[]).map(mapArticleRow),
+    subscribers:[], contactMessages:[], analytics:[]
+  };
   await loadPrivateData();
 }
 async function saveDB(){
   if(!supa || !adminLogged) throw new Error('Session administrateur Supabase requise.');
-  const {error}=await supa.from('site_data').upsert({id:'main',data:publicDBPayload(),updated_at:new Date().toISOString()});
+  const {error}=await supa.from('cms_site_state').upsert(publicSiteState(),{onConflict:'id'});
   if(error) throw error;
   return true;
+}
+async function saveArticleRemote(article){
+  if(!supa || !adminLogged) throw new Error('Session administrateur Supabase requise.');
+  const row=articleRow(article);
+  const {data,error}=await supa.from('cms_articles').upsert(row,{onConflict:'id'}).select('*').single();
+  if(error) throw error;
+  return mapArticleRow(data);
+}
+async function deleteArticleRemote(id){
+  if(!supa || !adminLogged) throw new Error('Session administrateur Supabase requise.');
+  const {error}=await supa.from('cms_articles').delete().eq('id',id);
+  if(error) throw error;
+}
+async function updateArticleRemote(id, patch){
+  if(!supa || !adminLogged) throw new Error('Session administrateur Supabase requise.');
+  const payload={...patch,updated_at:nowIso()};
+  const {data,error}=await supa.from('cms_articles').update(payload).eq('id',id).select('*').single();
+  if(error) throw error;
+  return mapArticleRow(data);
 }
 async function insertNewsletterSubscriber(row){
   if(!supa) throw new Error('Supabase non configuré.');
@@ -1026,10 +1078,10 @@ function adminArticles(){
     </table>
   </div>`;
 }
-async function publishNow(id){ const a=DB.articles.find(x=>x.id===id); a.status='published'; a.publishAt=nowIso(); await saveDB(); toast('Article publié'); render(); }
-async function trashArticle(id){ const a=DB.articles.find(x=>x.id===id); a.deletedAt=nowIso(); await saveDB(); toast('Déplacé vers la corbeille (30 jours)'); render(); }
-async function restoreArticle(id){ const a=DB.articles.find(x=>x.id===id); a.deletedAt=null; await saveDB(); toast('Article restauré'); render(); }
-async function purgeArticle(id){ if(!confirm('Suppression définitive — irréversible. Continuer ?')) return; DB.articles = DB.articles.filter(x=>x.id!==id); await saveDB(); toast('Supprimé définitivement'); render(); }
+async function publishNow(id){ try{ const a=DB.articles.find(x=>x.id===id); if(!a) throw new Error('Article introuvable.'); const updated=await updateArticleRemote(id,{status:'published',publish_at:nowIso(),deleted_at:null}); DB.articles=DB.articles.map(x=>x.id===id?updated:x); toast('Article publié et vérifié dans Supabase'); await render(); }catch(e){console.error(e);toast('Publication impossible : '+(e.message||e));} }
+async function trashArticle(id){ try{ const updated=await updateArticleRemote(id,{deleted_at:nowIso()}); DB.articles=DB.articles.map(x=>x.id===id?updated:x); toast('Article placé dans la corbeille'); await render(); }catch(e){console.error(e);toast('Suppression impossible : '+(e.message||e));} }
+async function restoreArticle(id){ try{ const updated=await updateArticleRemote(id,{deleted_at:null}); DB.articles=DB.articles.map(x=>x.id===id?updated:x); toast('Article restauré'); await render(); }catch(e){console.error(e);toast('Restauration impossible : '+(e.message||e));} }
+async function purgeArticle(id){ if(!confirm('Suppression définitive — irréversible. Continuer ?')) return; try{ await deleteArticleRemote(id); DB.articles=DB.articles.filter(x=>x.id!==id); toast('Supprimé définitivement'); await render(); }catch(e){console.error(e);toast('Suppression impossible : '+(e.message||e));} }
 
 function adminTrash(){
   const rows = DB.articles.filter(a=>a.deletedAt);
@@ -1167,20 +1219,27 @@ async function saveArticle(ev, id){
   const content = document.getElementById('f_content').value.trim();
   const status = document.getElementById('f_status').value;
   const scheduleAt = document.getElementById('f_scheduleAt').value;
-  const tags = Array.from(document.querySelectorAll('.tagpick input:checked')).map(i=>i.value).slice(0,2);
+  const tags = Array.from(document.querySelectorAll('.tagpick input:checked')).map(i=>i.value).slice(0,5);
+  if(!title || !excerpt || !content){ toast('Titre, chapô et contenu sont obligatoires.'); return false; }
   let publishAt = null;
   if(status==='published') publishAt = nowIso();
-  else if(status==='scheduled') publishAt = scheduleAt ? new Date(scheduleAt).toISOString() : nowIso();
-
-  if(id){
-    const a = DB.articles.find(x=>x.id===id);
-    Object.assign(a,{title,excerpt,category,author,image,seoTitle,seoDescription,premium,content,status,publishAt,tags,readMinutes:readTime(content),slug:a.slug||slugify(title)});
-  } else {
-    DB.articles.push({id:uid(),title,slug:slugify(title)+'-'+uid().slice(0,4),excerpt,content,image,seoTitle,seoDescription,category,author,tags,premium,status,publishAt,createdAt:nowIso(),deletedAt:null,readMinutes:readTime(content)});
+  else if(status==='scheduled'){
+    if(!scheduleAt) { toast('Choisissez une date de programmation.'); return false; }
+    publishAt = new Date(scheduleAt).toISOString();
   }
-  await saveDB();
-  toast('Article enregistré');
-  location.hash = '#/admin/articles';
+  try{
+    const current=id ? DB.articles.find(x=>x.id===id) : null;
+    const base=current || {id:uid(),createdAt:nowIso()};
+    const candidate={...base,title,slug:current?.slug||slugify(title)+'-'+uid().slice(0,4),excerpt,content,image,seoTitle,seoDescription,ogDescription:seoDescription,category,author,tags,premium,status,publishAt,deletedAt:null,readMinutes:readTime(content)};
+    const saved=await saveArticleRemote(candidate);
+    DB.articles=id ? DB.articles.map(x=>x.id===id?saved:x) : [saved,...DB.articles];
+    // Relecture depuis Supabase : l'admin n'affiche jamais un faux succès local.
+    const verify=DB.articles.find(x=>x.id===saved.id);
+    if(!verify || verify.title!==title || verify.status!==status) throw new Error('Vérification Supabase échouée après enregistrement.');
+    toast(status==='published'?'Article publié et vérifié':'Article enregistré dans Supabase');
+    location.hash='#/admin/articles';
+    await render();
+  }catch(e){ console.error(e); toast('Enregistrement impossible : '+(e.message||e)); }
   return false;
 }
 
