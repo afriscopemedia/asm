@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createSupabaseContext } from 'npm:@supabase/server'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -8,20 +8,14 @@ const cors = {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: cors })
+  if (req.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405, headers: cors })
 
-  const auth = req.headers.get('Authorization') || ''
-  if (!auth.startsWith('Bearer ')) return Response.json({ error: 'Authentification administrateur requise.' }, { status: 401, headers: cors })
+  const { data: ctx, error: authError } = await createSupabaseContext(req, { auth: 'user' })
+  if (authError || !ctx?.userClaims?.sub) {
+    return Response.json({ error: 'Authentification administrateur requise.' }, { status: 401, headers: cors })
+  }
 
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: auth } } },
-  )
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  if (userError || !user) return Response.json({ error: 'Session Supabase invalide.' }, { status: 401, headers: cors })
-
-  const body = await req.json()
+  const body = await req.json().catch(() => ({}))
   const topic = String(body.topic || '').trim()
   if (!topic) return Response.json({ error: 'Sujet manquant.' }, { status: 400, headers: cors })
 
@@ -52,26 +46,27 @@ Retourne UNIQUEMENT du JSON valide :
 }`
 
   const apiKey = Deno.env.get('OPENAI_API_KEY')
-  if (!apiKey) return Response.json({ error: 'OPENAI_API_KEY n’est pas configurée dans Supabase Edge Function Secrets.' }, { status: 500, headers: cors })
+  if (!apiKey) return Response.json({ error: 'OPENAI_API_KEY n’est pas configurée dans les secrets Edge Functions.' }, { status: 500, headers: cors })
 
   const r = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna',
       input: prompt,
       max_output_tokens: 5000,
     }),
   })
-  if (!r.ok) return Response.json({ error: `OpenAI HTTP ${r.status}: ${(await r.text()).slice(0,500)}` }, { status: 502, headers: cors })
+
+  if (!r.ok) return Response.json({ error: `OpenAI HTTP ${r.status}: ${(await r.text()).slice(0, 500)}` }, { status: 502, headers: cors })
   const data = await r.json()
   const text = data.output_text || (data.output || []).flatMap((x: any) => x.content || []).map((x: any) => x.text || '').join('\n')
-  let article: any
+
   try {
-    const clean = String(text).replace(/```json/gi,'').replace(/```/g,'').trim()
-    article = JSON.parse(clean.slice(clean.indexOf('{'), clean.lastIndexOf('}') + 1))
+    const clean = String(text).replace(/```json/gi, '').replace(/```/g, '').trim()
+    const article = JSON.parse(clean.slice(clean.indexOf('{'), clean.lastIndexOf('}') + 1))
+    return Response.json({ article }, { headers: { ...cors, 'Content-Type': 'application/json' } })
   } catch (_) {
-    return Response.json({ error: 'Réponse IA non JSON.', raw: String(text).slice(0,1000) }, { status: 502, headers: cors })
+    return Response.json({ error: 'Réponse IA non JSON.', raw: String(text).slice(0, 1000) }, { status: 502, headers: cors })
   }
-  return Response.json({ article }, { headers: { ...cors, 'Content-Type': 'application/json' } })
 })
