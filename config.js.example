@@ -5,5 +5,5 @@ window.AFRISCOPE_CONFIG = {
   supabaseProjectRef: "xzgxabefcyxenxlymfur",
   supabasePublishableKey: "REMPLACEZ_PAR_VOTRE_SB_PUBLISHABLE_KEY",
   // Exemple : https://www.afriscopemedia.com
-  publicSiteUrl: "https://afriscopemedia.github.io/asm"
+  publicSiteUrl: "https://afriscopemedia.github.io/asm/"
 };
