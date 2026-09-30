@@ -465,7 +465,7 @@ function route(){
   const h = location.hash.replace(/^#\/?/,'') || '';
   if(h) return h.split('/').filter(Boolean);
   const pathname = decodeURIComponent(location.pathname || '/');
-  const base = SITE_BASE_PATH || '';
+  const base = SITE_BASE_PATH || 'https://github.com/afriscopemedia/asm/';
   let relative = pathname;
   if(base && (pathname===base || pathname.startsWith(base+'/'))) relative = pathname.slice(base.length);
   relative = relative.replace(/^\/+|\/+$/g,'');
