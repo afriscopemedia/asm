@@ -2,6 +2,9 @@
 -- À exécuter dans SQL Editor après sauvegarde de la base.
 
 create extension if not exists pgcrypto;
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+create extension if not exists supabase_vault with schema vault;
 
 -- Le contenu public reste dans site_data. Les données privées ne doivent PAS y rester.
 update public.site_data
@@ -104,16 +107,22 @@ create policy "site data authenticated delete" on public.site_data
   for delete to authenticated using (true);
 
 -- 6) Cron : récapitulatif des articles de la veille à 06:00 heure du Gabon.
-create extension if not exists pg_cron;
-create extension if not exists pg_net;
--- Remplacez PROJECT_REF et PUBLISHABLE_KEY ci-dessous après déploiement de la fonction.
+-- Le job est volontairement laissé désactivé ici car la clé secrète doit être stockée dans Vault.
+-- Après avoir créé les secrets `afriscope_project_url` et `afriscope_secret_key` dans Vault,
+-- exécutez le bloc ci-dessous une seule fois dans SQL Editor.
 -- Heure Supabase Cron = UTC : 05:00 UTC = 06:00 Africa/Libreville.
+--
 -- select cron.schedule(
 --   'afriscope-daily-newsletter',
 --   '0 5 * * *',
---   $$select net.http_post(
---     url:='https://PROJECT_REF.supabase.co/functions/v1/daily-newsletter',
---     headers:='{"Content-Type":"application/json","apikey":"PUBLISHABLE_KEY"}'::jsonb,
---     body:='{}'::jsonb
---   )$$
+--   $$
+--   select net.http_post(
+--     url := (select decrypted_secret from vault.decrypted_secrets where name = 'afriscope_project_url') || '/functions/v1/daily-newsletter',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'apikey', (select decrypted_secret from vault.decrypted_secrets where name = 'afriscope_secret_key')
+--     ),
+--     body := '{}'::jsonb
+--   ) as request_id;
+--   $$
 -- );
