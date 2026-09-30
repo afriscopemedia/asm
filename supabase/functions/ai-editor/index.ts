@@ -4,20 +4,22 @@ const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Content-Type': 'application/json; charset=utf-8',
 }
+
+const json = (body: unknown, status = 200) =>
+  Response.json(body, { status, headers: cors })
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
-  if (req.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405, headers: cors })
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
   const { data: ctx, error: authError } = await createSupabaseContext(req, { auth: 'user' })
-  if (authError || !ctx?.userClaims?.sub) {
-    return Response.json({ error: 'Authentification administrateur requise.' }, { status: 401, headers: cors })
-  }
+  if (authError || !ctx?.userClaims?.sub) return json({ error: 'Authentification administrateur requise.' }, 401)
 
   const body = await req.json().catch(() => ({}))
   const topic = String(body.topic || '').trim()
-  if (!topic) return Response.json({ error: 'Sujet manquant.' }, { status: 400, headers: cors })
+  if (!topic) return json({ error: 'Sujet manquant.' }, 400)
 
   const angle = String(body.angle || 'ton journalistique rigoureux, factuel et lisible').trim()
   const category = String(body.category || 'Actualité').trim()
@@ -25,48 +27,66 @@ Deno.serve(async (req) => {
   const source = String(body.source || '').trim()
   const target = ({ courte: 250, moyenne: 500, longue: 800 } as Record<string, number>)[length] || 500
 
-  const prompt = `Tu es le rédacteur en chef adjoint d'AfriScope Media, média panafricain francophone. Produis un article journalistique original, précis et structuré.
+  const prompt = `Tu es rédacteur en chef adjoint d’AfriScope Media, média panafricain francophone.
+Produis un article original, précis, structuré et prêt à être relu par un journaliste.
+
 Sujet : ${topic}
 Rubrique : ${category}
 Angle : ${angle}
 Longueur cible : environ ${target} mots.
 Éléments/source fournis par le rédacteur : ${source || 'aucun'}
 
-Contraintes : ne fabrique aucun chiffre, nom, citation ou fait précis absent des éléments fournis. Si le sujet exige des faits récents qui ne sont pas fournis, formule le texte de manière prudente et générique plutôt que d'inventer. Le résultat doit être directement exploitable après relecture humaine.
-
-Retourne UNIQUEMENT du JSON valide :
-{
-  "title":"titre journalistique",
-  "excerpt":"chapô de 1 à 2 phrases",
-  "content":"article en paragraphes séparés par deux retours à la ligne",
-  "tags":["tag1","tag2","tag3","tag4"],
-  "seo_title":"titre SEO, maximum environ 60 caractères si possible",
-  "seo_description":"description SEO/OG de 140 à 160 caractères environ",
-  "og_description":"court extrait pour partage social"
-}`
+Ne fabrique aucun chiffre, nom, citation ou fait précis absent des éléments fournis.
+Si des faits récents manquent, formule prudemment au lieu d’inventer.
+Réponds exclusivement avec l’objet demandé.`
 
   const apiKey = Deno.env.get('OPENAI_API_KEY')
-  if (!apiKey) return Response.json({ error: 'OPENAI_API_KEY n’est pas configurée dans les secrets Edge Functions.' }, { status: 500, headers: cors })
+  const model = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna'
+  if (!apiKey) return json({ error: 'OPENAI_API_KEY n’est pas configurée dans les secrets Edge Functions.' }, 500)
+  if (!model) return json({ error: 'OPENAI_MODEL n’est pas configuré.' }, 500)
+
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      title: { type: 'string' },
+      excerpt: { type: 'string' },
+      content: { type: 'string' },
+      tags: { type: 'array', items: { type: 'string' } },
+      seo_title: { type: 'string' },
+      seo_description: { type: 'string' },
+      og_description: { type: 'string' }
+    },
+    required: ['title','excerpt','content','tags','seo_title','seo_description','og_description']
+  }
 
   const r = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna',
+      model,
       input: prompt,
       max_output_tokens: 5000,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'afriscope_article',
+          strict: true,
+          schema
+        }
+      }
     }),
   })
 
-  if (!r.ok) return Response.json({ error: `OpenAI HTTP ${r.status}: ${(await r.text()).slice(0, 500)}` }, { status: 502, headers: cors })
+  if (!r.ok) return json({ error: `OpenAI HTTP ${r.status}: ${(await r.text()).slice(0, 800)}` }, 502)
+
   const data = await r.json()
-  const text = data.output_text || (data.output || []).flatMap((x: any) => x.content || []).map((x: any) => x.text || '').join('\n')
+  const output = data.output_text || ''
+  if (!output) return json({ error: 'OpenAI a retourné une réponse sans texte.' }, 502)
 
   try {
-    const clean = String(text).replace(/```json/gi, '').replace(/```/g, '').trim()
-    const article = JSON.parse(clean.slice(clean.indexOf('{'), clean.lastIndexOf('}') + 1))
-    return Response.json({ article }, { headers: { ...cors, 'Content-Type': 'application/json' } })
-  } catch (_) {
-    return Response.json({ error: 'Réponse IA non JSON.', raw: String(text).slice(0, 1000) }, { status: 502, headers: cors })
+    return json({ article: JSON.parse(output) })
+  } catch {
+    return json({ error: 'Réponse OpenAI non conforme au JSON attendu.' }, 502)
   }
 })
