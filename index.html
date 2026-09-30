@@ -276,8 +276,8 @@ const ADMIN_PASSWORD = 'afriscope2026'; // mot de passe de secours UNIQUEMENT si
    3. Collez-les ci-dessous entre les guillemets, puis republiez ce fichier sur GitHub.
    Tant que ces deux valeurs ne sont pas renseignées, le site continue de fonctionner
    en mode démo local (comme avant), sans base partagée. */
-const SUPABASE_URL = '';       // ex: 'https://xxxxxxxxxxxx.supabase.co'
-const SUPABASE_ANON_KEY = '';  // ex: 'eyJhbGciOi...' (clé "anon public", jamais la clé "service_role")
+const SUPABASE_URL = 'https://xzgxabefcyxenxlymfur.supabase.co/rest/v1/';       // ex: 'https://xxxxxxxxxxxx.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6Z3hhYmVmY3l4ZW54bHltZnVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3MjI0OTksImV4cCI6MjEwNjI5ODQ5OX0.l388wTGzvoyxFM2Mn9PwM_gzyauabCikOEU_TEri65o';  // ex: 'eyJhbGciOi...' (clé "anon public", jamais la clé "service_role")
 
 const SUPABASE_CONFIGURED = !!(SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http'));
 const supa = (SUPABASE_CONFIGURED && window.supabase) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
