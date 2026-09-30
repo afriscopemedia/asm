@@ -1,0 +1,9 @@
+// Configuration publique uniquement.
+// Ne mettez JAMAIS OPENAI_API_KEY, RESEND_API_KEY ou une Supabase Secret Key ici.
+window.AFRISCOPE_CONFIG = {
+  supabaseUrl: "https://xzgxabefcyxenxlymfur.supabase.co",
+  supabaseProjectRef: "xzgxabefcyxenxlymfur",
+  supabasePublishableKey: "REMPLACEZ_PAR_VOTRE_SB_PUBLISHABLE_KEY",
+  // Exemple : https://www.afriscopemedia.com
+  publicSiteUrl: "https://afriscopemedia.github.io/asm"
+};
