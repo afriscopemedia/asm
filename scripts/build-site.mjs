@@ -4,6 +4,10 @@ import path from "node:path";
 const ROOT = process.cwd();
 const DIST = path.join(ROOT, "dist");
 const PUBLIC_SITE_URL = (process.env.PUBLIC_SITE_URL || "https://afriscopemedia.github.io/asm").replace(/\/$/, "");
+const parsedSiteUrl = new URL(PUBLIC_SITE_URL);
+if (parsedSiteUrl.hostname === "afriscopemedia.github.io" && parsedSiteUrl.pathname !== "/asm") {
+  throw new Error(`PUBLIC_SITE_URL doit être https://afriscopemedia.github.io/asm pour ce dépôt (valeur reçue: ${PUBLIC_SITE_URL})`);
+}
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || "";
 
@@ -75,7 +79,5 @@ const urls = [PUBLIC_SITE_URL + "/"];
 for (const a of articles) urls.push(`${PUBLIC_SITE_URL}/article/${encodeURIComponent(a.slug)}/`);
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `<url><loc>${esc(u)}</loc></url>`).join("\n")}\n</urlset>\n`;
 await fs.writeFile(path.join(DIST, "sitemap.xml"), sitemap);
-let notFound = await fs.readFile(path.join(ROOT, "404.html"), "utf8");
-notFound = notFound.replace(/<script src="\.\/config\.js"><\/script>/, `<script src="${esc(PUBLIC_SITE_URL)}/config.js"></script>`);
-await fs.writeFile(path.join(DIST, "404.html"), notFound);
+await fs.copyFile(path.join(ROOT, "404.html"), path.join(DIST, "404.html"));
 console.log(`Build SEO terminée: ${articles.length} article(s), sitemap généré.`);
