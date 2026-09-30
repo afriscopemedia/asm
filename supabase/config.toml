@@ -1,7 +1,7 @@
 project_id = "xzgxabefcyxenxlymfur"
 
 [functions.ai-editor]
-verify_jwt = true
+verify_jwt = false
 
 [functions.track-visit]
 verify_jwt = false
